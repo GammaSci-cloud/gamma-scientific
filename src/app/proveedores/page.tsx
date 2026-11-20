@@ -1,4 +1,4 @@
-
+﻿
 "use client";
 
 import { useEffect, useState } from "react";
@@ -75,11 +75,27 @@ export default function ProveedoresPage() {
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState("");
   const [error, setError] = useState("");
+  const [rolUsuario, setRolUsuario] = useState<string | null>(null);
 
-  useEffect(() => {
-    cargarProveedores();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+useEffect(() => {
+  cargarProveedores();
+
+  async function cargarRol() {
+    const { data, error } = await supabase.rpc("mi_rol");
+
+    if (error) {
+      console.error("Error al consultar el rol:", error.message);
+      setRolUsuario(null);
+      return;
+    }
+
+    setRolUsuario(data);
+  }
+
+  cargarRol();
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   async function cargarProveedores() {
     setCargando(true);
@@ -147,7 +163,7 @@ export default function ProveedoresPage() {
     e.preventDefault();
 
     if (!formulario.razon_social.trim()) {
-      setError("La razón social es obligatoria.");
+      setError("La razÃ³n social es obligatoria.");
       return;
     }
 
@@ -169,7 +185,6 @@ export default function ProveedoresPage() {
       sitio_web: formulario.sitio_web.trim() || null,
       condiciones_pago: formulario.condiciones_pago.trim() || null,
       tiempo_entrega: formulario.tiempo_entrega.trim() || null,
-      estatus: formulario.estatus,
       observaciones: formulario.observaciones.trim() || null,
       updated_at: new Date().toISOString(),
     };
@@ -211,28 +226,32 @@ export default function ProveedoresPage() {
   }
 
   async function eliminarProveedor(proveedor: Proveedor) {
-    const confirmar = window.confirm(
-      `¿Deseas eliminar al proveedor "${proveedor.razon_social}"?`
-    );
-
-    if (!confirmar) return;
-
-    setError("");
-    setMensaje("");
-
-    const { error } = await supabase
-      .from("proveedores")
-      .delete()
-      .eq("id", proveedor.id);
-
-    if (error) {
-      setError("No fue posible eliminar el proveedor: " + error.message);
-      return;
-    }
-
-    setMensaje("Proveedor eliminado correctamente.");
-    await cargarProveedores();
+  if (rolUsuario !== "administrador") {
+    setError("No tienes permiso para desactivar proveedores.");
+    return;
   }
+
+  const confirmar = window.confirm(
+    `Â¿Deseas desactivar al proveedor "${proveedor.razon_social}"?`
+  );
+
+  if (!confirmar) return;
+
+  setError("");
+  setMensaje("");
+
+const { error } = await supabase.rpc("desactivar_proveedor", {
+  p_proveedor_id: proveedor.id,
+});
+
+  if (error) {
+    setError("No fue posible desactivar el proveedor: " + error.message);
+    return;
+  }
+
+  setMensaje("Proveedor desactivado correctamente.");
+  await cargarProveedores();
+}
 
   function cancelarFormulario() {
     setMostrarFormulario(false);
@@ -277,7 +296,7 @@ export default function ProveedoresPage() {
               Proveedores
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              Administración del catálogo de proveedores.
+              AdministraciÃ³n del catÃ¡logo de proveedores.
             </p>
           </div>
 
@@ -355,7 +374,7 @@ export default function ProveedoresPage() {
 
                 <div>
                   <label className={labelClass}>
-                    Razón social *
+                    RazÃ³n social *
                   </label>
                   <input
                     className={inputClass}
@@ -363,7 +382,7 @@ export default function ProveedoresPage() {
                     onChange={(e) =>
                       actualizarCampo("razon_social", e.target.value)
                     }
-                    placeholder="Razón social"
+                    placeholder="RazÃ³n social"
                     required
                   />
                 </div>
@@ -406,19 +425,19 @@ export default function ProveedoresPage() {
                 </div>
 
                 <div>
-                  <label className={labelClass}>Teléfono</label>
+                  <label className={labelClass}>TelÃ©fono</label>
                   <input
                     className={inputClass}
                     value={formulario.telefono}
                     onChange={(e) =>
                       actualizarCampo("telefono", e.target.value)
                     }
-                    placeholder="Teléfono"
+                    placeholder="TelÃ©fono"
                   />
                 </div>
 
                 <div>
-                  <label className={labelClass}>Correo electrónico</label>
+                  <label className={labelClass}>Correo electrÃ³nico</label>
                   <input
                     type="email"
                     className={inputClass}
@@ -431,14 +450,14 @@ export default function ProveedoresPage() {
                 </div>
 
                 <div className="md:col-span-2 lg:col-span-3">
-                  <label className={labelClass}>Dirección</label>
+                  <label className={labelClass}>DirecciÃ³n</label>
                   <input
                     className={inputClass}
                     value={formulario.direccion}
                     onChange={(e) =>
                       actualizarCampo("direccion", e.target.value)
                     }
-                    placeholder="Calle, número, colonia"
+                    placeholder="Calle, nÃºmero, colonia"
                   />
                 </div>
 
@@ -467,14 +486,14 @@ export default function ProveedoresPage() {
                 </div>
 
                 <div>
-                  <label className={labelClass}>Código postal</label>
+                  <label className={labelClass}>CÃ³digo postal</label>
                   <input
                     className={inputClass}
                     value={formulario.codigo_postal}
                     onChange={(e) =>
                       actualizarCampo("codigo_postal", e.target.value)
                     }
-                    placeholder="Código postal"
+                    placeholder="CÃ³digo postal"
                   />
                 </div>
 
@@ -498,7 +517,7 @@ export default function ProveedoresPage() {
                     onChange={(e) =>
                       actualizarCampo("condiciones_pago", e.target.value)
                     }
-                    placeholder="Ej. Crédito 30 días"
+                    placeholder="Ej. CrÃ©dito 30 dÃ­as"
                   />
                 </div>
 
@@ -523,26 +542,8 @@ export default function ProveedoresPage() {
                     onChange={(e) =>
                       actualizarCampo("observaciones", e.target.value)
                     }
-                    placeholder="Información adicional del proveedor"
+                    placeholder="InformaciÃ³n adicional del proveedor"
                   />
-                </div>
-
-                <div className="flex items-center gap-3 md:col-span-2 lg:col-span-3">
-                  <input
-                    id="estatusProveedor"
-                    type="checkbox"
-                    checked={formulario.estatus}
-                    onChange={(e) =>
-                      actualizarCampo("estatus", e.target.checked)
-                    }
-                    className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
-                  />
-                  <label
-                    htmlFor="estatusProveedor"
-                    className="text-sm font-medium text-slate-700"
-                  >
-                    Proveedor activo
-                  </label>
                 </div>
               </div>
 
@@ -576,7 +577,7 @@ export default function ProveedoresPage() {
           <div className="flex flex-col justify-between gap-4 border-b border-slate-200 p-5 sm:flex-row sm:items-center">
             <div>
               <h2 className="text-lg font-bold text-slate-900">
-                Catálogo de proveedores
+                CatÃ¡logo de proveedores
               </h2>
               <p className="mt-1 text-sm text-slate-500">
                 Consulta y administra tus proveedores registrados.
@@ -602,7 +603,7 @@ export default function ProveedoresPage() {
                 No hay proveedores registrados
               </p>
               <p className="mt-2 text-sm text-slate-500">
-                Registra tu primer proveedor con el botón Nuevo proveedor.
+                Registra tu primer proveedor con el botÃ³n Nuevo proveedor.
               </p>
             </div>
           ) : (
@@ -613,7 +614,7 @@ export default function ProveedoresPage() {
                     <th className="px-5 py-4">Proveedor</th>
                     <th className="px-5 py-4">RFC</th>
                     <th className="px-5 py-4">Contacto</th>
-                    <th className="px-5 py-4">Teléfono</th>
+                    <th className="px-5 py-4">TelÃ©fono</th>
                     <th className="px-5 py-4">Correo</th>
                     <th className="px-5 py-4">Estatus</th>
                     <th className="px-5 py-4 text-right">Acciones</th>
@@ -638,19 +639,19 @@ export default function ProveedoresPage() {
                       </td>
 
                       <td className="px-5 py-4 text-slate-600">
-                        {proveedor.rfc || "—"}
+                        {proveedor.rfc || "â€”"}
                       </td>
 
                       <td className="px-5 py-4 text-slate-600">
-                        {proveedor.contacto || "—"}
+                        {proveedor.contacto || "â€”"}
                       </td>
 
                       <td className="px-5 py-4 text-slate-600">
-                        {proveedor.telefono || "—"}
+                        {proveedor.telefono || "â€”"}
                       </td>
 
                       <td className="px-5 py-4 text-slate-600">
-                        {proveedor.correo || "—"}
+                        {proveedor.correo || "â€”"}
                       </td>
 
                       <td className="px-5 py-4">
@@ -674,12 +675,14 @@ export default function ProveedoresPage() {
                             Editar
                           </button>
 
-                          <button
-                            onClick={() => eliminarProveedor(proveedor)}
-                            className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
-                          >
-                            Eliminar
-                          </button>
+                          {rolUsuario === "administrador" && proveedor.estatus && (
+  <button
+    onClick={() => eliminarProveedor(proveedor)}
+    className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+  >
+    Desactivar
+  </button>
+)}
                         </div>
                       </td>
                     </tr>

@@ -1,7 +1,7 @@
-
+﻿
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type Producto = {
@@ -41,10 +41,10 @@ const productoVacio = {
 
 const camposTexto = [
   ["clave", "Clave del producto"],
-  ["descripcion", "Descripción"],
+  ["descripcion", "DescripciÃ³n"],
   ["marca", "Marca"],
   ["modelo", "Modelo"],
-  ["categoria", "Categoría"],
+  ["categoria", "CategorÃ­a"],
   ["unidad", "Unidad"],
   ["proveedor", "Proveedor"],
   ["tiempoEntrega", "Tiempo de entrega"],
@@ -60,26 +60,22 @@ function formatoMoneda(valor: number) {
 }
 
 export default function ProductosPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [productos, setProductos] = useState<Producto[]>([]);
   const [formulario, setFormulario] = useState(productoVacio);
   const [busqueda, setBusqueda] = useState("");
+  const [filtroEstatus, setFiltroEstatus] = useState("todos");
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [editando, setEditando] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
-  const [eliminando, setEliminando] = useState<string | null>(null);
+  const [desactivando, setDesactivando] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    cargarProductos();
-  }, []);
 
-  async function cargarProductos() {
-    setCargando(true);
-    setError("");
 
+  const obtenerProductos = useCallback(async (): Promise<Producto[]> => {
     const { data, error } = await supabase
       .from("productos")
       .select("*")
@@ -87,11 +83,7 @@ export default function ProductosPage() {
 
     if (error) {
       console.error("Error al cargar productos:", error.message);
-      setError(
-        "No fue posible cargar los productos. Verifica la conexión y los permisos."
-      );
-      setCargando(false);
-      return;
+      throw error;
     }
 
     const lista: Producto[] = (data ?? []).map((p) => ({
@@ -112,9 +104,53 @@ export default function ProductosPage() {
       observaciones: p.observaciones ?? "",
     }));
 
-    setProductos(lista);
-    setCargando(false);
-  }
+    return lista;
+  }, [supabase]);
+
+  const cargarProductos = useCallback(async () => {
+    setError("");
+
+    try {
+      const lista = await obtenerProductos();
+      setProductos(lista);
+      return true;
+    } catch {
+      setError(
+        "No fue posible cargar los productos. Verifica la conexiÃ³n y los permisos."
+      );
+      return false;
+    }
+  }, [obtenerProductos]);
+
+  useEffect(() => {
+    let cancelado = false;
+
+    async function cargarInicial() {
+      try {
+        const lista = await obtenerProductos();
+
+        if (!cancelado) {
+          setProductos(lista);
+        }
+      } catch {
+        if (!cancelado) {
+          setError(
+            "No fue posible cargar los productos. Verifica la conexiÃ³n y los permisos."
+          );
+        }
+      } finally {
+        if (!cancelado) {
+          setCargando(false);
+        }
+      }
+    }
+
+    void cargarInicial();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [obtenerProductos]);
 
   function actualizarCampo(
     campo: keyof typeof productoVacio,
@@ -126,14 +162,23 @@ export default function ProductosPage() {
         [campo]: valor,
       };
 
-      if (campo === "precioCosto" || campo === "porcentajeUtilidad") {
-        const costo = Number(actualizado.precioCosto) || 0;
-        const utilidad = Number(actualizado.porcentajeUtilidad) || 0;
+if (campo === "precioCosto" || campo === "porcentajeUtilidad") {
+  const costo = Number(actualizado.precioCosto);
+  const utilidad = Number(actualizado.porcentajeUtilidad);
 
-        actualizado.precioVenta = (
-          costo * (1 + utilidad / 100)
-        ).toFixed(2);
-      }
+  if (
+    !Number.isFinite(costo) ||
+    costo < 0 ||
+    !Number.isFinite(utilidad) ||
+    utilidad < 0
+  ) {
+    actualizado.precioVenta = "0";
+  } else {
+    actualizado.precioVenta = (
+      costo * (1 + utilidad / 100)
+    ).toFixed(2);
+  }
+}
 
       return actualizado;
     });
@@ -206,7 +251,7 @@ export default function ProductosPage() {
       iva > 100
     ) {
       setError(
-        "Verifica los costos, precios, utilidad e IVA. Los valores deben ser válidos y no negativos; el IVA no puede superar 100%."
+        "Verifica los costos, precios, utilidad e IVA. Los valores deben ser vÃ¡lidos y no negativos; el IVA no puede superar 100%."
       );
       setGuardando(false);
       return;
@@ -235,6 +280,8 @@ export default function ProductosPage() {
           .from("productos")
           .update(datos)
           .eq("id", editando)
+          .select("id")
+          .single()
       : await supabase
           .from("productos")
           .insert(datos);
@@ -255,7 +302,12 @@ export default function ProductosPage() {
       return;
     }
 
-    await cargarProductos();
+    const recargaCorrecta = await cargarProductos();
+
+    if (!recargaCorrecta) {
+      setGuardando(false);
+      return;
+    }
 
     setFormulario(productoVacio);
     setEditando(null);
@@ -263,42 +315,61 @@ export default function ProductosPage() {
     setGuardando(false);
   }
 
-  async function eliminarProducto(id: string) {
-    if (eliminando) return;
+    async function desactivarProducto(id: string) {
+    if (desactivando) return;
 
-    if (!confirm("¿Deseas eliminar este producto?")) return;
+    if (
+      !confirm(
+        "Â¿Deseas desactivar este producto? PodrÃ¡s reactivarlo desde Editar."
+      )
+    ) {
+      return;
+    }
 
     setError("");
-    setEliminando(id);
+    setDesactivando(id);
 
     const { error } = await supabase
       .from("productos")
-      .delete()
+      .update({
+        estatus: false,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", id);
 
     if (error) {
       console.error(
-        "Error al eliminar producto:",
+        "Error al desactivar producto:",
         error.message
       );
 
-      setError("No fue posible eliminar el producto.");
-      setEliminando(null);
+      setError("No fue posible desactivar el producto.");
+      setDesactivando(null);
       return;
     }
 
     setProductos((actuales) =>
-      actuales.filter((p) => p.id !== id)
+      actuales.map((p) =>
+        p.id === id ? { ...p, estatus: false } : p
+      )
     );
 
-    setEliminando(null);
+    setDesactivando(null);
   }
 
-  const productosFiltrados = productos.filter((p) =>
+  const productosFiltrados = productos.filter((p) => {
+  const coincideBusqueda =
     `${p.clave} ${p.descripcion} ${p.marca} ${p.modelo} ${p.categoria} ${p.proveedor}`
       .toLowerCase()
-      .includes(busqueda.toLowerCase())
-  );
+      .includes(busqueda.toLowerCase());
+
+  const coincideEstatus =
+    filtroEstatus === "todos" ||
+    (filtroEstatus === "activos" && p.estatus) ||
+    (filtroEstatus === "inactivos" && !p.estatus);
+
+  return coincideBusqueda && coincideEstatus;
+});
 
   function cancelar() {
     setFormulario(productoVacio);
@@ -322,7 +393,7 @@ export default function ProductosPage() {
             </h1>
 
             <p className="mt-2 text-slate-500">
-              Catálogo de productos y servicios.
+              CatÃ¡logo de productos y servicios.
             </p>
           </div>
 
@@ -363,7 +434,7 @@ export default function ProductosPage() {
 
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-slate-500">
-              Resultados de búsqueda
+              Resultados de bÃºsqueda
             </p>
 
             <p className="mt-2 text-3xl font-bold text-slate-800">
@@ -386,27 +457,25 @@ export default function ProductosPage() {
               <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
 
                 {camposTexto.map(([campo, etiqueta]) => (
-                  <label key={campo} className="block">
-                    <span className="mb-2 block text-sm font-medium text-slate-700">
-                      {etiqueta}
-                    </span>
+  <label key={campo} className="block">
+    <span className="mb-2 block text-sm font-medium text-slate-700">
+      {etiqueta}
+      {(campo === "clave" || campo === "descripcion") && (
+        <span className="ml-1 text-red-500">*</span>
+      )}
+    </span>
 
-                    <input
-                      required={
-                        campo === "clave" ||
-                        campo === "descripcion"
-                      }
-                      value={formulario[campo]}
-                      onChange={(e) =>
-                        actualizarCampo(campo, e.target.value)
-                      }
-                      className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-teal-500"
-                    />
-                  </label>
-                ))}
+    <input
+      required={campo === "clave" || campo === "descripcion"}
+      value={formulario[campo]}
+      onChange={(e) => actualizarCampo(campo, e.target.value)}
+      className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-teal-500"
+    />
+  </label>
+))}
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">
+                                    <span className="mb-2 block text-sm font-medium text-slate-700">
                     Precio de costo
                   </span>
 
@@ -443,7 +512,7 @@ export default function ProductosPage() {
                   />
 
                   <p className="mt-1 text-xs text-slate-400">
-                    Se utiliza para calcular automáticamente el precio de venta.
+                    Se utiliza para calcular automÃ¡ticamente el precio de venta.
                   </p>
                 </label>
 
@@ -462,7 +531,7 @@ export default function ProductosPage() {
                   />
 
                   <p className="mt-1 text-xs text-teal-700">
-                    Calculado automáticamente con costo y utilidad.
+                    Calculado automÃ¡ticamente con costo y utilidad.
                   </p>
                 </label>
 
@@ -589,16 +658,28 @@ export default function ProductosPage() {
 
           <div className="border-b border-slate-200 p-5">
             <h2 className="mb-3 text-lg font-bold text-slate-800">
-              Catálogo de productos
+              CatÃ¡logo de productos
             </h2>
 
-            <input
-              type="search"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar por clave, descripción, marca, modelo o categoría..."
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 md:max-w-xl"
-            />
+            <div className="flex flex-col gap-3 md:flex-row">
+  <input
+    type="search"
+    value={busqueda}
+    onChange={(e) => setBusqueda(e.target.value)}
+    placeholder="Buscar por clave, descripciÃ³n, marca, modelo o categorÃ­a..."
+    className="w-full rounded-lg border border-slate-300 px-4 py-3 md:flex-1"
+  />
+
+  <select
+    value={filtroEstatus}
+    onChange={(e) => setFiltroEstatus(e.target.value)}
+    className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 md:w-48"
+  >
+    <option value="todos">Todos los productos</option>
+    <option value="activos">Solo activos</option>
+    <option value="inactivos">Solo inactivos</option>
+  </select>
+</div>
           </div>
 
           {cargando ? (
@@ -617,9 +698,9 @@ export default function ProductosPage() {
                 <thead className="bg-slate-50 text-slate-600">
                   <tr>
                     <th className="px-5 py-4">Clave</th>
-                    <th className="px-5 py-4">Descripción</th>
+                    <th className="px-5 py-4">DescripciÃ³n</th>
                     <th className="px-5 py-4">Marca / Modelo</th>
-                    <th className="px-5 py-4">Categoría</th>
+                    <th className="px-5 py-4">CategorÃ­a</th>
                     <th className="px-5 py-4">Costo</th>
                     <th className="px-5 py-4">Precio venta</th>
                     <th className="px-5 py-4">Precio con IVA</th>
@@ -647,7 +728,7 @@ export default function ProductosPage() {
                       </td>
 
                       <td className="px-5 py-4 text-slate-600">
-                        {p.categoria || "—"}
+                        {p.categoria || "â€”"}
                       </td>
 
                       <td className="px-5 py-4 text-slate-600">
@@ -690,15 +771,17 @@ export default function ProductosPage() {
                             Editar
                           </button>
 
-                          <button
-                            onClick={() => eliminarProducto(p.id)}
-                            disabled={eliminando !== null}
-                            className="font-semibold text-red-600 hover:underline disabled:opacity-50"
-                          >
-                            {eliminando === p.id
-                              ? "Eliminando..."
-                              : "Eliminar"}
-                          </button>
+                                                    {p.estatus && (
+                            <button
+                              onClick={() => desactivarProducto(p.id)}
+                              disabled={desactivando !== null}
+                              className="font-semibold text-red-600 hover:underline disabled:opacity-50"
+                            >
+                              {desactivando === p.id
+                                ? "Desactivando..."
+                                : "Desactivar"}
+                            </button>
+                          )}
 
                         </div>
                       </td>
@@ -713,7 +796,7 @@ export default function ProductosPage() {
         </section>
 
         <p className="mt-5 text-xs text-slate-400">
-          Gamma Scientific · Productos conectados a Supabase.
+          Gamma Scientific Â· Productos conectados a Supabase.
         </p>
 
       </div>

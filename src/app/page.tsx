@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -50,11 +50,38 @@ const activities = [
 
 export default function Home() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
-  const [active, setActive] = useState("Panel principal");
-  const [search, setSearch] = useState("");
-  const [cerrandoSesion, setCerrandoSesion] = useState(false);
+const [active, setActive] = useState("Panel principal");
+const [search, setSearch] = useState("");
+const [cerrandoSesion, setCerrandoSesion] = useState(false);
+const [rolUsuario, setRolUsuario] = useState<string | null>(null);
+const [cargandoRol, setCargandoRol] = useState(true);
+
+useEffect(() => {
+  let activo = true;
+
+  async function cargarRol() {
+    const { data, error } = await supabase.rpc("mi_rol");
+
+    if (!activo) return;
+
+    if (error) {
+      console.error("Error al consultar el rol:", error.message);
+      setRolUsuario(null);
+    } else {
+      setRolUsuario(data);
+    }
+
+    setCargandoRol(false);
+  }
+
+  cargarRol();
+
+  return () => {
+    activo = false;
+  };
+}, [supabase]);
 
   async function cerrarSesion() {
     if (cerrandoSesion) return;
@@ -105,10 +132,29 @@ export default function Home() {
           </p>
 
           <nav className="grid grid-cols-2 gap-2 md:grid-cols-1">
-            {menu.map((item) => (
+            {menu
+  .filter(
+    (item) =>
+      item.name !== "Usuarios y permisos" ||
+      rolUsuario === "administrador"
+  )
+  .map((item) => (
               <button
                 key={item.name}
-                onClick={() => setActive(item.name)}
+                onClick={() => {
+  const rutas: Record<string, string> = {
+    "Clientes": "/clientes",
+    "Cotizaciones": "/cotizaciones",
+    "Productos": "/productos",
+    "Proveedores": "/proveedores",
+  };
+
+  if (rutas[item.name]) {
+    router.push(rutas[item.name]);
+  } else {
+    setActive(item.name);
+  }
+}}
                 className={`flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm transition ${
                   active === item.name
                     ? "bg-[#19B6B0] font-semibold text-[#102B46]"
@@ -148,13 +194,19 @@ export default function Home() {
           {/* USUARIO Y CERRAR SESIÓN */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="hidden text-right sm:block">
-              <p className="text-sm font-semibold text-[#102B46]">
-                Administrador
-              </p>
-              <p className="text-xs text-slate-500">
-                Cuenta de usuario
-              </p>
-            </div>
+  <p className="text-sm font-semibold text-[#102B46]">
+    {cargandoRol
+      ? "Consultando..."
+      : rolUsuario === "administrador"
+        ? "Administrador"
+        : rolUsuario === "empleado"
+          ? "Empleado"
+          : "Sin rol asignado"}
+  </p>
+  <p className="text-xs text-slate-500">
+    Cuenta de usuario
+  </p>
+</div>
 
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#DDF5F3] font-bold text-[#117D79]">
               A
@@ -360,7 +412,8 @@ export default function Home() {
                 paso a paso.
               </p>
 
-              {active === "Usuarios y permisos" && (
+              {active === "Usuarios y permisos" &&
+              rolUsuario === "administrador" && (
                 <p className="mt-4 rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
                   Regla del sistema: solamente el administrador podrá
                   crear nuevos usuarios.

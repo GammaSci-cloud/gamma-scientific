@@ -36,6 +36,19 @@ type Partida = {
   tasa_iva: number;
 };
 
+type CotizacionDetalle = {
+  producto_id: string | null;
+  clave_producto: string | null;
+  descripcion: string;
+  marca: string | null;
+  modelo: string | null;
+  unidad: string | null;
+  cantidad: number | string;
+  precio_unitario: number | string | null;
+  descuento_porcentaje: number | string | null;
+  tasa_iva: number | string | null;
+};
+
 type Cotizacion = {
   id: string;
   folio: string;
@@ -69,6 +82,14 @@ const moneda = (valor: number, tipo = "MXN") =>
 const porcentajeIVA = (valor: number) => {
   const numero = Number(valor) || 0;
   return numero <= 1 ? numero * 100 : numero;
+};
+const fechaLocalHoy = () => {
+  const hoy = new Date();
+  const año = hoy.getFullYear();
+  const mes = String(hoy.getMonth() + 1).padStart(2, "0");
+  const dia = String(hoy.getDate()).padStart(2, "0");
+
+  return `${año}-${mes}-${dia}`;
 };
 
 // Importante: no generar UUID durante la inicialización.
@@ -112,9 +133,19 @@ export default function CotizacionesPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setFecha(new Date().toISOString().slice(0, 10));
-    cargarDatos();
-  }, []);
+  let inicializado = false;
+
+  async function iniciar() {
+    await cargarDatos();
+
+    if (!inicializado) {
+      setFecha(fechaLocalHoy());
+      inicializado = true;
+    }
+  }
+
+  iniciar();
+}, []);
 
   async function cargarDatos() {
     setCargando(true);
@@ -175,7 +206,7 @@ export default function CotizacionesPage() {
 
   function limpiarFormulario() {
     setClienteId("");
-    setFecha(new Date().toISOString().slice(0, 10));
+    setFecha(fechaLocalHoy());
     setFechaVencimiento("");
     setMonedaSeleccionada("MXN");
     setVigencia(30);
@@ -238,7 +269,7 @@ export default function CotizacionesPage() {
       setObservaciones(cotizacion.observaciones || "");
 
       setPartidas(
-        detalles.map((detalle: any) => ({
+        detalles.map((detalle: CotizacionDetalle) => ({
           id: crypto.randomUUID(),
           producto_id: detalle.producto_id || "",
           clave_producto: detalle.clave_producto || "",

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type Cliente = {
@@ -42,7 +42,7 @@ const campos = [
 ] as const;
 
 export default function ClientesPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [busqueda, setBusqueda] = useState("");
@@ -91,7 +91,7 @@ export default function ClientesPage() {
     }
 
     cargarClientes();
-  }, []);
+  }, [supabase]);
 
   // GUARDAR O ACTUALIZAR CLIENTE
   async function guardarCliente(e: FormEvent<HTMLFormElement>) {
